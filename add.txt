@@ -1,0 +1,44 @@
+
+//確認張數
+try {
+  console.log('[🚀] 嘗試點擊「確認張數」按鈕...');
+
+  const confirmBtn = page.locator('text=確認張數');
+  await confirmBtn.waitFor({ state: 'visible', timeout: 3000 });
+
+  await confirmBtn.click();
+  console.log('[🟢] 已成功點擊「確認張數」按鈕');
+} catch (error) {
+  console.error('[❌] 點擊「確認張數」失敗：', error);
+  await page.screenshot({ path: `screenshots/confirm-error-${Date.now()}.png` });
+  return;
+}
+
+
+  //detail頁面
+  try {
+    console.log('[🚀] 嘗試點擊「立即訂購」按鈕...');
+
+    const orderLink = await page.locator('.buy a');
+    await orderLink.waitFor({ state: 'visible', timeout: 5000 });
+
+    await page.evaluate(() => {
+      const link = document.querySelector('.buy a') as HTMLAnchorElement;
+      if (link) link.click();
+    });
+
+    console.log('[🟢] 已點擊「立即訂購」按鈕');
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForTimeout(1000);
+  } catch (error) {
+    console.error('[❌] 點擊「立即訂購」失敗：', error);
+    await page.screenshot({ path: `screenshots/fail-click-${Date.now()}.png` });
+    return;
+  }
+
+
+
+  , { app: { name: 'C:\Program Files\IrfanView\i_view64.exe' } }
+
+
+  npx ts-node src/test.ts

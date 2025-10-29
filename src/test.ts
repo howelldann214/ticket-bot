@@ -61,9 +61,9 @@ function waitForEnter(message: string): Promise<void> {
 
 
   try {
-    console.log('[🎯] 嘗試選取「B2層特1區8800」...');
+    console.log('[🎯] 嘗試選取「D8」...');
 
-    const targetText = 'B2層特1區8800';
+    const targetText = 'B2層特1區';
     const target = await page.locator(`text=${targetText}`);
     await target.waitFor({ state: 'visible', timeout: 3000 });
 
@@ -82,8 +82,8 @@ function waitForEnter(message: string): Promise<void> {
     const selects = await page.locator('select.form-select').elementHandles();
 
     if (selects.length > 0) {
-      await selects[0].selectOption('4');
-      console.log('[🟢] 成功選擇 4 張票');
+      await selects[0].selectOption('1');
+      console.log('[🟢] 成功選擇 2 張票');
     } else {
       console.error('[❌] 找不到票數下拉選單');
       await page.screenshot({ path: `screenshots/select-fail-${Date.now()}.png` });
@@ -100,9 +100,7 @@ function waitForEnter(message: string): Promise<void> {
     if (await captchaImg.count() > 0) {
       console.log('[🖼️] 發現驗證碼圖片，準備擷取並儲存 screenshots/captcha.png...');
       await captchaImg.screenshot({ path: 'screenshots/captcha.png' });
-  
-      // ✅ 自動用系統預設圖片工具開啟 captcha.png
-      await open('screenshots/captcha.png');
+
   
       // 🔡 等待使用者輸入驗證碼
       const rl = readline.createInterface({

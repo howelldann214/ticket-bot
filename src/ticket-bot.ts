@@ -1,8 +1,9 @@
 // src/ticket-bot.ts
 
 import { chromium } from 'playwright';
-import readline from 'readline';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
 
 dotenv.config();
 
@@ -40,8 +41,13 @@ function waitUntil(targetTime: Date): Promise<void> {
     return;
   }
 
+
   const startTime = new Date(startTimeStr);
   await waitUntil(startTime);
+
+  // 指定時間到後，刷新頁面
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  console.log('[🔄] 頁面已刷新');
 
   
 
@@ -52,7 +58,7 @@ function waitUntil(targetTime: Date): Promise<void> {
     console.log('[🚀] 嘗試前往最終購票頁面（button[data-href]）...');
     await page.waitForSelector('button.btn-primary[data-href]', { timeout: 5000 });
 
-    const nextUrl = await page.$eval('button.btn-primary[data-href]', el => el.getAttribute('data-href'));
+    const nextUrl = await page.locator('button.btn-primary[data-href]').nth(0).getAttribute('data-href');
 
     if (nextUrl) {
       console.log(`[➡️] 導向購票頁面：${nextUrl}`);
@@ -68,7 +74,7 @@ function waitUntil(targetTime: Date): Promise<void> {
     return;
   }
   try {
-    const targetSeat = process.env.TARGET_SEAT ;
+    const targetSeat = process.env.TARGET_NAME ;
     console.log(`[🎯] 嘗試選取「${targetSeat}」...`);
 
     const targetText = targetSeat;
@@ -103,36 +109,64 @@ function waitUntil(targetTime: Date): Promise<void> {
   }
   
   try {
-  console.log('[🔍] 檢查是否出現驗證碼圖片...');
-  const captchaImg = page.locator('img[src*="captcha"]');
+    console.log('[🔍] 檢查是否出現驗證碼圖片...');
+    const captchaImg = page.locator('img[src*="captcha"]');
 
-  if (await captchaImg.count() > 0) {
-    console.log('[🖼️] 發現驗證碼圖片，準備擷取並儲存 screenshots/captcha.png...');
-    await captchaImg.screenshot({ path: 'screenshots/captcha.png' });
+    if (await captchaImg.count() > 0) {
+      console.log('[🖼️] 發現驗證碼圖片，準備擷取並儲存 screenshots/captcha.png...');
 
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout
-    });
+      const screenshotsDir = path.join(process.cwd(), 'screenshots');
+      if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
+      const outPath = path.join(screenshotsDir, 'captcha.png');
 
-    const verifyCode: string = await new Promise((resolve) => {
-      rl.question('[🧠] 請查看 captcha.png 並輸入驗證碼：', (answer) => {
-        rl.close();
-        resolve(answer.trim());
-      });
-    });
+      await captchaImg.screenshot({ path: outPath });
 
-    const captchaInput = page.locator('input[placeholder*="驗證碼"]');
-    await captchaInput.fill(verifyCode);
-    console.log('[✅] 驗證碼已填入');
-  } else {
-    console.log('[ℹ️] 沒有驗證碼，跳過驗證碼處理');
+      // 自動呼叫本機 OCR server，填入 captcha（但不按送出）
+      try {
+        const apiUrl = 'http://127.0.0.1:5001/ocr';
+        const res = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: outPath }),
+        });
+
+        if (!res.ok) {
+          const text = await res.text();
+          console.error('[❌] OCR server 回傳錯誤：', res.status, text);
+          console.log('[ℹ️] 無法自動辨識，儲存 captcha 圖片供人工檢查：', outPath);
+        } else {
+          const data = await res.json();
+          const items = data && data.items && Array.isArray(data.items) ? data.items : [];
+          const firstFormatted = items.find((it: any) => it && it.formatted && String(it.formatted).trim().length > 0);
+          if (firstFormatted) {
+            const formattedValue = String(firstFormatted.formatted).trim();
+            const captchaInput = page.locator('input[placeholder*="驗證碼"]');
+            // 填入 input 並觸發 input/change
+            await captchaInput.fill(formattedValue);
+            await captchaInput.evaluate((el, v) => {
+              (el as HTMLInputElement).value = v;
+              el.dispatchEvent(new Event('input', { bubbles: true }));
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+            }, formattedValue);
+            console.log(`[✓] 已將 OCR 結果填入 captcha 欄位（尚未送出）：${formattedValue}`);
+          } else {
+            console.log('[ℹ] OCR 未回傳 formatted 值，未自動填入');
+            console.log('[ℹ] 儲存 captcha 圖片供人工檢查：', outPath);
+          }
+        }
+      } catch (err) {
+        console.error('[❌] 無法連線至 OCR server，請確認你已啟動 OCR/ocr_server.py：', err);
+        console.log('[ℹ] 儲存 captcha 圖片供人工檢查：', outPath);
+      }
+
+    } else {
+      console.log('[ℹ️] 沒有驗證碼，跳過驗證碼處理');
+    }
+  } catch (error) {
+    console.error('[❌] 驗證碼處理失敗：', error);
+    await page.screenshot({ path: `screenshots/captcha-error-${Date.now()}.png` });
+    return;
   }
-} catch (error) {
-  console.error('[❌] 驗證碼處理失敗：', error);
-  await page.screenshot({ path: `screenshots/captcha-error-${Date.now()}.png` });
-  return;
-}
 
 try {
   console.log('[☑️] 嘗試勾選同意條款...');
